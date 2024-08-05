@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Text To Speech</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        label {
+            margin-right: 10px;
+        }
+        .control {
+            margin-bottom: 10px;
+        }
+        #progress {
+            margin-top: 10px;
+            display: none;
+            height: 10px;
+            background: #ddd;
+            border-radius: 5px;
+        }
+        #progress-bar {
+            height: 100%;
+            width: 0;
+            background: #4caf50;
+            border-radius: 5px;
+        }
+        #highlight {
+            background-color: yellow;
+        }
+    </style>
+</head>
+<body>
+    <div>
+        <div class="control">
+            <label for="input">Text:</label>
+            <textarea id="input" rows="4" cols="50" placeholder="Enter text or SSML here"></textarea>
+        </div>
+        <div class="control">
+            <label for="fileInput">Load Text:</label>
+            <input id="fileInput" type="file" accept=".txt" onchange="loadFile(event)">
+        </div>
+        <div class="control">
+            <label for="voiceSelect">Voice:</label>
+            <select id="voiceSelect"></select>
+        </div>
+        <div class="control">
+            <label for="rate">Rate:</label>
+            <input id="rate" type="range" min="0.5" max="2" value="1" step="0.1">
+            <span id="rateValue">1</span>
+        </div>
+        <div class="control">
+            <label for="pitch">Pitch:</label>
+            <input id="pitch" type="range" min="0" max="2" value="1" step="0.1">
+            <span id="pitchValue">1</span>
+        </div>
+        <div class="control">
+            <label for="volume">Volume:</label>
+            <input id="volume" type="range" min="0" max="100" value="100" step="1">
+            <span id="volumeValue">100</span>
+        </div>
+        <button onclick="speak()">Speak</button>
+        <button onclick="pause()">Pause</button>
+        <button onclick="resume()">Resume</button>
+        <button onclick="saveAudio()">Save Audio</button>
+    </div>
+    <div id="progress">
+        <div id="progress-bar"></div>
+    </div>
+    <p id="highlight"></p>
+
+    <script>
+        var synth = window.speechSynthesis;
+        var voiceSelect = document.getElementById('voiceSelect');
+        var rate = document.getElementById('rate');
+        var pitch = document.getElementById('pitch');
+        var volume = document.getElementById('volume');
+        var rateValue = document.getElementById('rateValue');
+        var pitchValue = document.getElementById('pitchValue');
+        var volumeValue = document.getElementById('volumeValue');
+        var progress = document.getElementById('progress');
+        var progressBar = document.getElementById('progress-bar');
+        var highlight = document.getElementById('highlight');
+        var utterance;
+
+        function populateVoiceList() {
+            var voices = synth.getVoices();
+            
+            voiceSelect.innerHTML = '';
+            voices.forEach((voice, index) => {
+                var option = document.createElement('option');
+                option.textContent = `${voice.name} (${voice.lang})`;
+                option.value = index;
+                voiceSelect.appendChild(option);
+            });
+        }
+
+        populateVoiceList();
+        if (speechSynthesis.onvoiceschanged !== undefined) {
+            speechSynthesis.onvoiceschanged = populateVoiceList;
+        }
+
+        rate.oninput = function() {
+            rateValue.textContent = rate.value;
+        }
+
+        pitch.oninput = function() {
+            pitchValue.textContent = pitch.value;
+        }
+
+        volume.oninput = function() {
+            volumeValue.textContent = volume.value;
+        }
+
+        function speak() {
+            var text = document.getElementById('input').value;
+            if (text.trim() === '') {
+                alert('Please enter some text.');
+                return;
+            }
+
+            if (synth.speaking) {
+                synth.cancel();
+            }
+
+            utterance = new SpeechSynthesisUtterance(text);
+            var selectedVoice = synth.getVoices()[voiceSelect.value];
+            utterance.voice = selectedVoice;
+            utterance.rate = rate.value;
+            utterance.pitch = pitch.value;
+            utterance.volume = volume.value / 100; // Adjust volume range from 0-100 to 0-1
+
+            utterance.onstart = function() {
+                console.log('Speech started');
+                progress.style.display = 'block';
+                highlightText(text);
+                updateProgress();
+            };
+
+            utterance.onend = function() {
+                console.log('Speech ended');
+                progress.style.display = 'none';
+                progressBar.style.width = '0';
+                highlight.innerHTML = '';
+            };
+
+            utterance.onerror = function(event) {
+                console.error('Speech error', event);
+                progress.style.display = 'none';
+                progressBar.style.width = '0';
+                highlight.innerHTML = '';
+            };
+
+            synth.speak(utterance);
+        }
+
+        function pause() {
+            if (synth.speaking && !synth.paused) {
+                synth.pause();
+            }
+        }
+
+        function resume() {
+            if (synth.paused) {
+                synth.resume();
+            }
+        }
+
+        function updateProgress() {
+            var interval = setInterval(function() {
+                if (synth.speaking) {
+                    var elapsed = utterance.elapsedTime;
+                    var total = utterance.text.length / utterance.rate;
+                    var progressPercent = Math.min((elapsed / total) * 100, 100);
+                    progressBar.style.width = progressPercent + '%';
+                } else {
+                    clearInterval(interval);
+                }
+            }, 100);
+        }
+
+        function highlightText(text) {
+            highlight.innerHTML = text;
+            var words = text.split(' ');
+            var index = 0;
+
+            utterance.onboundary = function(event) {
+                if (event.name === 'word') {
+                    index++;
+                    highlight.innerHTML = words.slice(0, index).join(' ') + ' <span id="highlight">' + words[index] + '</span> ' + words.slice(index + 1).join(' ');
+                }
+            };
+        }
+
+        function saveAudio() {
+            var text = document.getElementById('input').value;
+            if (text.trim() === '') {
+                alert('Please enter some text.');
+                return;
+            }
+
+            var selectedVoice = synth.getVoices()[voiceSelect.value];
+            var utterance = new SpeechSynthesisUtterance(text);
+            utterance.voice = selectedVoice;
+            utterance.rate = rate.value;
+            utterance.pitch = pitch.value;
+            utterance.volume = volume.value / 100; // Adjust volume range from 0-100 to 0-1
+
+            var audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            var source = audioContext.createMediaStreamSource(new MediaStream());
+            source.connect(audioContext.destination);
+
+            utterance.onend = function() {
+                audioContext.close().then(() => {
+                    var audioData = audioContext.createBufferSource();
+                    audioData.buffer = source.buffer;
+                    var audioBlob = new Blob([audioData], { type: 'audio/wav' });
+                    var url = URL.createObjectURL(audioBlob);
+
+                    var a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'speech.wav';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                });
+            };
+
+            synth.speak(utterance);
+        }
+
+        function loadFile(event) {
+            var file = event.target.files[0];
+            if (file) {
+                var reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('input').value = e.target.result;
+                };
+                reader.readAsText(file);
+            }
+        }
+    </script>
+</body>
+</html>
